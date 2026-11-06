@@ -1,26 +1,9 @@
 // capri-mod: 1
 // id: study-buddy
 // name: Study Buddy
-// version: 1.3.0
+// version: 1.3.1
 // author: Potato
 // description: Say "genuinely", "seriously" or "for real" and Capri gives a short, real answer, looking at your screen first when you ask about it. Otherwise she's her usual self.
-//
-// How it works:
-// - She stays her normal funny self. Put a keyword in what you say and she answers that one for real: the answer first,
-//   then a short why. Her personality stays in how she says it, never instead of it.
-//     genuinely, seriously, serious question, for real, no jokes, be serious, real answer, explain properly, honest answer
-//   and how her ears mishear them (genuine, genuinly, generally, serious lee, sirius lee, for reel...), plus typed srsly
-//   and fr. Asking for answers counts too: "tell me the answers", "what's the answer", "answer these questions",
-//   "help me with this question", "help me with my homework".
-// - Serious and about your screen ("this", "my screen", "these questions"...)? She looks at your screen straight away,
-//   reads the question, and answers it. No "tell me what the question is" first.
-// - A keyword keeps her serious for 90 seconds, so she has time to finish. The next line without one is back to normal.
-// - "Study mode on" keeps her serious for every question until "study mode off" (it stays on after a restart).
-// - Live quizzes and tests (Kahoot, Quizizz, Blooket, Gimkit, Quizlet Live, timed or graded tests, exams) are the
-//   exception: she won't give the answer to a live question, and offers to explain the topic or go over it after.
-// - While she's serious it adds one instruction to what her brain is told (where her tool notes go), and starts her own
-//   screen look for screen questions. It doesn't call anything else, use any key or change her settings, and turning
-//   the mod off takes it all out.
 using System;
 using System.IO;
 using System.Linq.Expressions;
@@ -45,10 +28,8 @@ public class StudyBuddy : ICapriMod
         "the question first. Check your answer before you say it; if you're not sure, say so in a few words and give your " +
         "best answer. When they ask you to quiz them, ask one question at a time and tell them if they're right and why.";
 
-    // What her eyes are asked to pick out when she looks for a question, so her brain gets the question itself.
     public const string ReadQuestion = ". Read out any question on screen exactly: its words, its numbers and every answer choice";
 
-    // The words that ask for a real answer, and how her ears tend to mishear them.
     public static readonly Regex Serious = new Regex(
         @"(?<![\p{L}\p{N}])(" +
         @"genuine(?:ly)?|genuinly|genuenly|genuinley|generally|jenuin(?:e|ely|ly)|genu\s+in(?:e)?ly|june\s+wine\s+ly|june\s+wine\s+lee|" +
@@ -62,21 +43,18 @@ public class StudyBuddy : ICapriMod
         @"what(?:'s|’s|s|\s+is|\s+are|'re|’re|re)\s+the\s+(?:right\s+|correct\s+)?answers?|" +
         @"answer\s+(?:these|this|that|the|my)\s+(?:\w+\s+)?questions?" +
         @")(?![\p{L}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    // When she's serious, these mean the question is on their screen.
     public static readonly Regex AboutScreen = new Regex(@"(?<![\p{L}\p{N}])(screens?|monitor|display|worksheet|this|these|that\s+one|it\s+says|the\s+(?:right\s+|correct\s+)?answers|the\s+questions)(?![\p{L}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     public static readonly Regex StudyOn = new Regex(@"\bstudy\s*(?:mode|buddy)\s*(?:on|start|activate)\b|\b(?:turn|switch)\s+on\s+study\s*(?:mode|buddy)\b", RegexOptions.IgnoreCase);
     public static readonly Regex StudyOff = new Regex(@"\bstudy\s*(?:mode|buddy)\s*(?:off|stop|end)\b|\b(?:turn|switch)\s+off\s+study\s*(?:mode|buddy)\b", RegexOptions.IgnoreCase);
     public const double SeriousSeconds = 90, LookSeconds = 30;
-    // For tests: a stand-in clock.
     public static Func<DateTime> Clock = delegate { return DateTime.UtcNow; };
 
     private ICapriHost capri;
     private readonly object gate = new object();
     private bool studyMode;
     private DateTime seriousUntil = DateTime.MinValue, lookUntil = DateTime.MinValue;
-    private string lookFor; // the line she's to look at their screen for, squashed
+    private string lookFor;
     private string modeFile;
-    // Her hooks this mod wraps: what was there before, and this mod's own, so Stop puts back only what's still this mod's.
     private FieldInfo noteHook, planHook, lookHook;
     private Delegate noteWas, planWas, lookWas, noteMine, planMine, lookMine;
 
@@ -106,7 +84,6 @@ public class StudyBuddy : ICapriMod
         }
         catch (Exception error)
         {
-            // A Capri update changed this: say so once, and change nothing.
             capri.Log("Study Buddy couldn't reach her brain's notes (" + error.Message + "), so it's not doing anything");
             return;
         }
@@ -126,8 +103,6 @@ public class StudyBuddy : ICapriMod
         return field;
     }
 
-    // Hands.Plan is what she checks first for a job to do before her brain answers. This puts a screen look there for a
-    // serious screen question, and leaves everything else to what was there.
     private void WrapPlan(FieldInfo field)
     {
         Type type = field.FieldType;
@@ -147,7 +122,6 @@ public class StudyBuddy : ICapriMod
         planHook = field; planWas = was; planMine = mine;
     }
 
-    // Hands.Look takes a screenshot and has her eyes describe it. For this mod's own looks they're asked to read the question.
     private void WrapLook(FieldInfo field)
     {
         if (field.FieldType != typeof(Func<string, string>)) throw new MissingFieldException("Hands.Look");
@@ -158,7 +132,6 @@ public class StudyBuddy : ICapriMod
         lookHook = field; lookWas = was; lookMine = added;
     }
 
-    // She hears every line before her brain answers it, so this decides, line by line, whether she's serious.
     public bool Heard(string words)
     {
         string said = words ?? "";
@@ -172,10 +145,9 @@ public class StudyBuddy : ICapriMod
             lookFor = serious && AboutScreen.IsMatch(said) ? Squash(said) : null;
             lookUntil = lookFor == null ? DateTime.MinValue : now.AddSeconds(LookSeconds);
         }
-        return false; // she still answers it herself
+        return false;
     }
 
-    // Is this the line she was just asked, seriously, about their screen? Her brain may get it a little trimmed.
     public bool ShouldLook(string said)
     {
         try { return Mine(said); }
@@ -212,7 +184,6 @@ public class StudyBuddy : ICapriMod
     {
         try
         {
-            // Only put the old one back if nothing else wrapped it after this mod did.
             if (hook != null && Equals(hook.GetValue(null), mine)) hook.SetValue(null, was);
         }
         catch (Exception) { }
