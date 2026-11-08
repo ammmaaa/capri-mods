@@ -1,7 +1,7 @@
 // capri-mod: 1
 // id: mute-button
 // name: Mute Button
-// version: 1.2.0
+// version: 1.2.1
 // author: Potato
 // description: Adds a mute button left of TYPE and TALK, mirroring the mic button. One click silences her voice instantly, even mid-sentence, and her bubbles still show. Click again to hear her.
 using System;
@@ -95,6 +95,7 @@ public class MuteButton : ICapriMod
             {
                 button = (Form)Activator.CreateInstance(overlay, Any, null, new object[] { "Mute Capri" }, null);
                 button.Cursor = pointer;
+                button.Owner = window;
                 button.MouseUp += delegate(object sender, MouseEventArgs e) { if (e.Button == MouseButtons.Left) Toggle(); };
                 still = new Hook();
                 still.AssignHandle(button.Handle);
