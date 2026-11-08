@@ -1,12 +1,11 @@
 // capri-mod: 1
 // id: study-buddy
 // name: Study Buddy
-// version: 1.3.1
+// version: 1.4.0
 // author: Potato
 // description: Say "genuinely", "seriously" or "for real" and Capri gives a short, real answer, looking at your screen first when you ask about it. Otherwise she's her usual self.
 using System;
 using System.IO;
-using System.Linq.Expressions;
 using System.Reflection;
 using System.Text.RegularExpressions;
 using CapriDesktop;
@@ -24,9 +23,12 @@ public class StudyBuddy : ICapriMod
         "working needs it, or they ask. No intro, no \"sure, I can help\", no disclaimers, no asking what the question is " +
         "when you can look, and no joke in place of the answer: your personality goes in the wording. If you just looked at " +
         "their screen for this, answer the question you saw there; if there are several, answer the one they mean, or else " +
-        "each in a few words. If they ask about their screen and you haven't looked yet, call look_at_screen with focus on " +
-        "the question first. Check your answer before you say it; if you're not sure, say so in a few words and give your " +
+        "each in a few words. Check your answer before you say it; if you're not sure, say so in a few words and give your " +
         "best answer. When they ask you to quiz them, ask one question at a time and tell them if they're right and why.";
+
+    public const string ScreenNote =
+        "\nThis message is about something on their screen. Call look_at_screen first, with focus on the question, before you " +
+        "answer. Then check what you saw against the live quiz rule above before you say anything about it.";
 
     public const string ReadQuestion = ". Read out any question on screen exactly: its words, its numbers and every answer choice";
 
@@ -40,27 +42,39 @@ public class StudyBuddy : ICapriMod
         @"(?:the\s+)?answer\s+(?:to|for|of)\s+(?:this|these|that|the|my)\s+(?:\w+\s+)?(?:questions?|problems?)|" +
         @"(?:tell|give|show|get)\s+(?:me|us)\s+(?:all\s+)?(?:the\s+|those\s+|these\s+)?(?:right\s+|correct\s+)?answers?|" +
         @"tell\s+(?:me|us)\s+what\s+the\s+(?:right\s+|correct\s+)?answers?\s+(?:is|are)|" +
-        @"what(?:'s|’s|s|\s+is|\s+are|'re|’re|re)\s+the\s+(?:right\s+|correct\s+)?answers?|" +
+        @"what(?:'s|\u2019s|s|\s+is|\s+are|'re|\u2019re|re)\s+the\s+(?:right\s+|correct\s+)?answers?|" +
         @"answer\s+(?:these|this|that|the|my)\s+(?:\w+\s+)?questions?" +
         @")(?![\p{L}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    public static readonly Regex AboutScreen = new Regex(@"(?<![\p{L}\p{N}])(screens?|monitor|display|worksheet|this|these|that\s+one|it\s+says|the\s+(?:right\s+|correct\s+)?answers|the\s+questions)(?![\p{L}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    public static readonly Regex AboutScreen = new Regex(
+        @"(?<![\p{L}\p{N}])(" +
+        @"screens?|monitor|display|worksheet|" +
+        @"(?:this|these|that|those)\s+(?:\w+\s+)?(?:questions?|problems?|quiz(?:zes)?|tests?|exercises?|equations?|options|choices|pages?|slides?|diagrams?|graphs?|charts?)|" +
+        @"the\s+(?:\w+\s+)?(?:questions?|problems?|answer\s+choices|options)\s+(?:here|on\s+(?:here|it)|i'?m\s+(?:on|doing|looking\s+at))|" +
+        @"look\s+at\s+(?:this|it|that)|what\s+(?:do\s+)?you\s+see|can\s+you\s+see|on\s+(?:here|my\s+(?:page|laptop|pc|computer))" +
+        @")(?![\p{L}\p{N}])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     public static readonly Regex StudyOn = new Regex(@"\bstudy\s*(?:mode|buddy)\s*(?:on|start|activate)\b|\b(?:turn|switch)\s+on\s+study\s*(?:mode|buddy)\b", RegexOptions.IgnoreCase);
     public static readonly Regex StudyOff = new Regex(@"\bstudy\s*(?:mode|buddy)\s*(?:off|stop|end)\b|\b(?:turn|switch)\s+off\s+study\s*(?:mode|buddy)\b", RegexOptions.IgnoreCase);
-    public const double SeriousSeconds = 90, LookSeconds = 30;
+    public const double SeriousSeconds = 90, LookSeconds = 45;
     public static Func<DateTime> Clock = delegate { return DateTime.UtcNow; };
 
     private ICapriHost capri;
     private readonly object gate = new object();
     private bool studyMode;
     private DateTime seriousUntil = DateTime.MinValue, lookUntil = DateTime.MinValue;
-    private string lookFor;
     private string modeFile;
-    private FieldInfo noteHook, planHook, lookHook;
-    private Delegate noteWas, planWas, lookWas, noteMine, planMine, lookMine;
+    private FieldInfo noteHook, lookHook;
+    private Delegate noteWas, lookWas, noteMine, lookMine;
 
     public bool IsSerious
     {
         get { lock (gate) return studyMode || Clock() < seriousUntil; }
+    }
+
+    public bool ScreenAsked
+    {
+        get { lock (gate) return Clock() < lookUntil; }
     }
 
     public void Start(ICapriHost host)
@@ -78,7 +92,7 @@ public class StudyBuddy : ICapriMod
             FieldInfo field = Hook(hands, "AlsoCalled");
             if (field.FieldType != typeof(Func<string>)) throw new MissingFieldException("Hands.AlsoCalled");
             Func<string> was = (Func<string>)field.GetValue(null);
-            Func<string> added = delegate { return (was == null ? "" : was()) + (IsSerious ? Note : ""); };
+            Func<string> added = delegate { return (was == null ? "" : was()) + (IsSerious ? Note + (ScreenAsked ? ScreenNote : "") : ""); };
             field.SetValue(null, added);
             noteHook = field; noteWas = was; noteMine = added;
         }
@@ -87,13 +101,17 @@ public class StudyBuddy : ICapriMod
             capri.Log("Study Buddy couldn't reach her brain's notes (" + error.Message + "), so it's not doing anything");
             return;
         }
-        try { WrapPlan(Hook(hands, "Plan")); WrapLook(Hook(hands, "Look")); }
-        catch (Exception error)
+        try
         {
-            Unwrap(ref planHook, planWas, ref planMine);
-            Unwrap(ref lookHook, lookWas, ref lookMine);
-            capri.Log("Study Buddy couldn't reach her screen looks (" + error.Message + "), so she'll decide herself when to look");
+            FieldInfo field = Hook(hands, "Look");
+            if (field.FieldType != typeof(Func<string, string>)) throw new MissingFieldException("Hands.Look");
+            Func<string, string> was = (Func<string, string>)field.GetValue(null);
+            if (was == null) throw new MissingFieldException("Hands.Look");
+            Func<string, string> added = delegate(string focus) { return was(ScreenAsked ? (focus ?? "") + ReadQuestion : focus); };
+            field.SetValue(null, added);
+            lookHook = field; lookWas = was; lookMine = added;
         }
+        catch (Exception error) { capri.Log("Study Buddy couldn't reach her eyes (" + error.Message + "), so she won't read questions out word for word"); }
     }
 
     private static FieldInfo Hook(Type hands, string name)
@@ -101,35 +119,6 @@ public class StudyBuddy : ICapriMod
         FieldInfo field = hands == null ? null : hands.GetField(name, BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public);
         if (field == null) throw new MissingFieldException("Hands." + name);
         return field;
-    }
-
-    private void WrapPlan(FieldInfo field)
-    {
-        Type type = field.FieldType;
-        if (!type.IsGenericType || type.GetGenericTypeDefinition() != typeof(Func<,>) || type.GetGenericArguments()[0] != typeof(string)) throw new MissingFieldException("Hands.Plan");
-        Type pair = type.GetGenericArguments()[1];
-        if (!pair.IsGenericType || pair.GetGenericTypeDefinition() != typeof(System.Collections.Generic.KeyValuePair<,>) || pair.GetGenericArguments()[0] != typeof(string)) throw new MissingFieldException("Hands.Plan");
-        Type arguments = pair.GetGenericArguments()[1];
-        FieldInfo focus = arguments.GetField("Focus");
-        if (focus == null || focus.FieldType != typeof(string)) throw new MissingFieldException("ToolArguments.Focus");
-        Delegate was = (Delegate)field.GetValue(null);
-        ParameterExpression said = Expression.Parameter(typeof(string), "said");
-        Expression look = Expression.Convert(Expression.Call(Expression.Constant(this), GetType().GetMethod("LookPlan"), said, Expression.Constant(pair, typeof(Type)), Expression.Constant(arguments, typeof(Type))), pair);
-        Expression otherwise = was == null ? (Expression)Expression.Default(pair) : Expression.Invoke(Expression.Constant(was), said);
-        Expression body = Expression.Condition(Expression.Call(Expression.Constant(this), GetType().GetMethod("ShouldLook"), said), look, otherwise);
-        Delegate mine = Expression.Lambda(type, body, said).Compile();
-        field.SetValue(null, mine);
-        planHook = field; planWas = was; planMine = mine;
-    }
-
-    private void WrapLook(FieldInfo field)
-    {
-        if (field.FieldType != typeof(Func<string, string>)) throw new MissingFieldException("Hands.Look");
-        Func<string, string> was = (Func<string, string>)field.GetValue(null);
-        if (was == null) throw new MissingFieldException("Hands.Look");
-        Func<string, string> added = delegate(string focus) { return was(Mine(focus) ? focus + ReadQuestion : focus); };
-        field.SetValue(null, added);
-        lookHook = field; lookWas = was; lookMine = added;
     }
 
     public bool Heard(string words)
@@ -142,40 +131,14 @@ public class StudyBuddy : ICapriMod
             DateTime now = Clock();
             seriousUntil = Serious.IsMatch(said) ? now.AddSeconds(SeriousSeconds) : DateTime.MinValue;
             bool serious = studyMode || now < seriousUntil;
-            lookFor = serious && AboutScreen.IsMatch(said) ? Squash(said) : null;
-            lookUntil = lookFor == null ? DateTime.MinValue : now.AddSeconds(LookSeconds);
+            lookUntil = serious && AboutScreen.IsMatch(said) ? now.AddSeconds(LookSeconds) : DateTime.MinValue;
         }
         return false;
     }
 
-    public bool ShouldLook(string said)
-    {
-        try { return Mine(said); }
-        catch (Exception) { return false; }
-    }
-
-    private bool Mine(string said)
-    {
-        string line = Squash(said);
-        lock (gate)
-        {
-            if (lookFor == null || line.Length < 4 || Clock() >= lookUntil) return false;
-            return line == lookFor || lookFor.Contains(line) || line.Contains(lookFor);
-        }
-    }
-
-    public object LookPlan(string said, Type pair, Type arguments)
-    {
-        object args = Activator.CreateInstance(arguments);
-        arguments.GetField("Focus").SetValue(args, said);
-        return Activator.CreateInstance(pair, "look_at_screen", args);
-    }
-
-    private static string Squash(string text) { return Regex.Replace((text ?? "").ToLowerInvariant(), @"[^\p{L}\p{N}]+", ""); }
-
     private void SetStudyMode(bool on)
     {
-        lock (gate) { studyMode = on; seriousUntil = DateTime.MinValue; lookFor = null; }
+        lock (gate) { studyMode = on; seriousUntil = DateTime.MinValue; lookUntil = DateTime.MinValue; }
         try { if (modeFile != null) File.WriteAllText(modeFile, on ? "on" : "off"); }
         catch (IOException error) { capri.Log("Study Buddy couldn't save study mode: " + error.Message); }
     }
@@ -194,7 +157,6 @@ public class StudyBuddy : ICapriMod
     public void Stop()
     {
         Unwrap(ref noteHook, noteWas, ref noteMine);
-        Unwrap(ref planHook, planWas, ref planMine);
         Unwrap(ref lookHook, lookWas, ref lookMine);
     }
 }
