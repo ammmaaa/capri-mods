@@ -6,3 +6,5 @@ Pointed black cat ears on her head.
 - Made by: Issei
 
 Black outside and her hair red inside, drawn flat and sharp to match her art. They're placed by hand for every pose (standing, sitting, lying down) and droop out to the sides when she's asleep. They glitch and flash along with her.
+
+It covers her new standing loop from Capri 0.8.6, facing either way, with its blink and glitches. With Legacy stand on, she wears it on her old stand instead.
