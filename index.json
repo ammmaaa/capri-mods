@@ -42,6 +42,14 @@
       "about": "Auto Game Hologram is a Windows code mod for Capri Desktop. It turns on Capri's click-through Hologram mode when a recognized game is in the foreground. When you leave the game, it restores the previous state if the mod made the change automatically."
     },
     {
+      "folder": "battery-drama",
+      "file": "battery-drama.capri-code",
+      "name": "Low Battery Drama",
+      "kind": "code",
+      "author": "Issei",
+      "about": "On a laptop, Capri gets more dramatic the lower your battery goes, and cheers when you plug in."
+    },
+    {
       "folder": "btd6-strategy",
       "file": "btd6-strategy.capri-skill",
       "name": "BTD6 strategy",
@@ -96,6 +104,14 @@
       "kind": "skin",
       "author": "Vocyn",
       "about": "Capri in spring in old Japan: sakura-cloud hair thick with blossoms and shedding petals that flutter down past her, a plum kimono with a faint asanoha print, cherry-bark limbs, orchid-pink petal panels and a warm sunset glow."
+    },
+    {
+      "folder": "chess-strategy",
+      "file": "chess-strategy.capri-skill",
+      "name": "Chess strategy",
+      "kind": "skill",
+      "author": "Issei",
+      "about": "Know-how Capri follows whenever she plays chess on Chess.com, Lichess or a chess app."
     },
     {
       "folder": "colors-bubblegum",
@@ -168,6 +184,14 @@
       "kind": "code",
       "author": "Issei",
       "about": "Fair dice, coin flips, random numbers and picks."
+    },
+    {
+      "folder": "dice-roll-rus",
+      "file": "dice-roll-rus.capri-code",
+      "name": "Кубы и монетка",
+      "kind": "code",
+      "author": "kyltest12",
+      "about": "Бросает кубы d4, d6, d10, d12 и подбрасывает монетку по команде."
     },
     {
       "folder": "ember",
