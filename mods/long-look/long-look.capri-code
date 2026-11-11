@@ -1,0 +1,448 @@
+// capri-mod: 1
+// id: long-look
+// name: Long Look
+// version: 1.0.0
+// author: Potato
+// description: Capri watches your screen for about 10 seconds and comments on everything she saw, not one frame. Say "long look" for one go, or "long look on" to watch a show together. "long look off" stops.
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Drawing.Drawing2D;
+using System.Drawing.Imaging;
+using System.Drawing.Text;
+using System.Globalization;
+using System.IO;
+using System.Reflection;
+using System.Runtime.InteropServices;
+using System.Text;
+using System.Text.RegularExpressions;
+using System.Threading;
+using System.Windows.Forms;
+using CapriDesktop;
+
+public class LongLook : ICapriMod
+{
+    const BindingFlags Any = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static;
+    const string Lead = @"^(?:(?:hey|yo|ok|okay)\s+)?(?:capri\b[\s,!.]*)?(?:(?:can|could|would|will)\s+(?:you|u)\s+)?(?:please\s+)?";
+    const string End = @"[\s.!?]*(?:please)?[\s.!?]*$";
+    const string Name = @"(?:long\s+look|long\s+watch|close\s+watch)";
+    public static readonly Regex OnAsk = new Regex(Lead + @"(?:(?:turn\s+|switch\s+)?" + Name + @"\s+(?:mode\s+)?(?:on|start)|(?:turn|switch)\s+on\s+(?:the\s+)?" + Name + @"|start\s+(?:a\s+|the\s+)?" + Name + @"|watch\s+(?:(?:this|it|that|along)\s+)?(?:with\s+me\s+)?closely(?:\s+with\s+me)?|keep\s+watching\s+closely)" + End, RegexOptions.IgnoreCase);
+    public static readonly Regex OffAsk = new Regex(Lead + @"(?:(?:turn\s+|switch\s+)?" + Name + @"\s+(?:mode\s+)?(?:off|stop|end)|(?:turn|switch)\s+off\s+(?:the\s+)?" + Name + @"|(?:stop|end)\s+(?:the\s+)?" + Name + ")" + End, RegexOptions.IgnoreCase);
+    public static readonly Regex StopAsk = new Regex(Lead + @"(?:stop|quit)\s+(?:watching|looking)(?:\s+(?:the\s+|my\s+)?(?:screen|this|it|closely))?" + End, RegexOptions.IgnoreCase);
+    public static readonly Regex OnceAsk = new Regex(Lead + @"(?:(?:take|have|do|give\s+(?:it|this|that))\s+)?(?:a\s+)?" + Name + @"(?:\s+at\s+(?:this|that|it|my\s+screen|the\s+screen))?(?:\s+for\s+(?<n>\d{1,2})\s*(?:s|sec|secs|seconds?))?" + End
+        + "|" + Lead + @"watch\s+(?:this|that|it|my\s+screen|the\s+screen)\s+for\s+(?<n>\d{1,2})\s*(?:s|sec|secs|seconds?)" + End, RegexOptions.IgnoreCase);
+    public static readonly Regex SetAsk = new Regex(Lead + @"(?:set|make|change)\s+(?:the\s+|my\s+)?" + Name + @"\s+(?:to|for)\s+(?<n>\d{1,2})\s*(?:s|sec|secs|seconds?)?" + End, RegexOptions.IgnoreCase);
+
+    ICapriHost capri;
+    Form window, chip;
+    Hook chipHook;
+    System.Windows.Forms.Timer timer;
+    object brain;
+    MethodInfo quick, shot, free, talkScale, present, plate, mono, speechRules;
+    PropertyInfo persona;
+    FieldInfo secret;
+    Color pink = Color.FromArgb(255, 46, 136), cyan = Color.FromArgb(58, 214, 235), red = Color.FromArgb(232, 36, 64);
+    readonly object gate = new object();
+    readonly List<string> said = new List<string>();
+    string settings;
+    int seconds = 10, ticket;
+    volatile bool on, looking;
+    string drawnKey;
+
+    // The smoke test swaps these: a wait that returns false once this look is cancelled, and the rest between looks.
+    public Func<int, int, bool> Wait;
+    public int Rest = 35000;
+
+    public bool On { get { return on; } }
+    public bool Looking { get { return looking; } }
+    public int Seconds { get { return seconds; } }
+    public Form Chip { get { return chip; } }
+
+    sealed class Hook : NativeWindow
+    {
+        protected override void WndProc(ref Message m)
+        {
+            if (m.Msg == 0x02E0) return;
+            if (m.Msg == 0x0084) { m.Result = new IntPtr(-1); return; }
+            base.WndProc(ref m);
+        }
+    }
+
+    [DllImport("user32.dll")] static extern bool SetWindowDisplayAffinity(IntPtr window, uint affinity);
+
+    public void Start(ICapriHost host)
+    {
+        capri = host;
+        Wait = Sleep;
+        try
+        {
+            settings = Path.Combine(host.Folder, "seconds.txt");
+            int saved;
+            if (File.Exists(settings) && int.TryParse(File.ReadAllText(settings).Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out saved)) seconds = Clamp(saved);
+        }
+        catch (Exception) { }
+        try
+        {
+            window = (Form)Need(host.GetType().GetField("capri", Any), "her window").GetValue(host);
+            Assembly app = typeof(ICapriMod).Assembly;
+            Type me = window.GetType(), brainType = app.GetType("CapriDesktop.Brain"), computer = app.GetType("CapriDesktop.Computer");
+            brain = Need(me.GetField("brain", Any), "Companion.brain").GetValue(window);
+            foreach (MethodInfo m in brain.GetType().GetMethods(Any))
+            {
+                ParameterInfo[] p = m.GetParameters();
+                if (m.Name == "Quick" && m.ReturnType == typeof(string) && p.Length == 4 && p[0].ParameterType == typeof(string) && p[1].ParameterType == typeof(string) && p[2].ParameterType == typeof(int) && p[3].ParameterType == typeof(byte[][])) quick = m;
+            }
+            Need(quick, "Brain.Quick");
+            shot = Need(me.GetMethod("CommentShot", Any, null, Type.EmptyTypes, null), "Companion.CommentShot");
+            free = me.GetMethod("CommentFree", Any, null, Type.EmptyTypes, null);
+            talkScale = me.GetMethod("TalkScale", Any, null, Type.EmptyTypes, null);
+            if (brainType != null)
+            {
+                persona = brainType.GetProperty("Persona", Any);
+                speechRules = brainType.GetMethod("Speech", Any, null, Type.EmptyTypes, null);
+                if (speechRules != null && (!speechRules.IsStatic || speechRules.ReturnType != typeof(string))) speechRules = null;
+            }
+            secret = computer == null ? null : computer.GetField("SecretFocus", Any);
+        }
+        catch (Exception error)
+        {
+            quick = null;
+            host.Log("Long Look couldn't reach her eyes (" + error.Message + "), so it's not doing anything");
+            return;
+        }
+        try
+        {
+            Assembly app = typeof(ICapriMod).Assembly;
+            Type overlay = app.GetType("CapriDesktop.Overlay"), look = app.GetType("CapriDesktop.Look"), pill = app.GetType("CapriDesktop.TalkPill");
+            present = Need(overlay.GetMethod("Present", Any), "Overlay.Present");
+            plate = pill == null ? null : pill.GetMethod("Plate", Any);
+            mono = look == null ? null : look.GetMethod("Mono", Any);
+            pink = Colour(look, "Pink", pink); cyan = Colour(look, "Cyan", cyan); red = Colour(look, "Red", red);
+            OnUi(delegate
+            {
+                chip = (Form)Activator.CreateInstance(overlay, Any, null, new object[] { "Long Look" }, null);
+                chip.Owner = window;
+                chipHook = new Hook();
+                chipHook.AssignHandle(chip.Handle);
+                // Keeps the sign out of her own screenshots (Windows 10 2004 and later; older ones just show it).
+                SetWindowDisplayAffinity(chip.Handle, 0x11);
+                timer = new System.Windows.Forms.Timer { Interval = 120 };
+                timer.Tick += delegate { Draw(); };
+                timer.Start();
+            });
+        }
+        catch (Exception error) { host.Log("Long Look couldn't draw its sign: " + error.Message); }
+    }
+
+    public void Stop()
+    {
+        Cancel();
+        OnUi(delegate
+        {
+            if (timer != null) timer.Dispose();
+            timer = null;
+            if (chipHook != null) chipHook.ReleaseHandle();
+            chipHook = null;
+            if (chip != null) chip.Dispose();
+            chip = null;
+        });
+    }
+
+    void Cancel()
+    {
+        lock (gate) { ticket++; on = false; looking = false; }
+    }
+
+    static int Clamp(int n) { return Math.Max(4, Math.Min(30, n)); }
+
+    public bool Heard(string words)
+    {
+        string text = Regex.Replace(words ?? "", @"\s+", " ").Trim();
+        if (text.Length == 0 || quick == null) return false;
+        Match m;
+        if ((m = SetAsk.Match(text)).Success)
+        {
+            seconds = Clamp(int.Parse(m.Groups["n"].Value, CultureInfo.InvariantCulture));
+            try { File.WriteAllText(settings, seconds.ToString(CultureInfo.InvariantCulture)); } catch (Exception) { }
+            capri.Say("Long looks are " + seconds + " seconds now.");
+            return true;
+        }
+        if (OffAsk.IsMatch(text) || (StopAsk.IsMatch(text) && (on || looking)))
+        {
+            bool was = on || looking;
+            Cancel();
+            capri.Say(was ? "Okay, eyes off your screen." : "I wasn't watching.");
+            return true;
+        }
+        if (OnAsk.IsMatch(text))
+        {
+            if (on) { capri.Say("Already watching with you."); return true; }
+            capri.Say("Watching with you. I'll look for " + seconds + " seconds at a time. Say long look off to stop.");
+            Begin(false, seconds);
+            return true;
+        }
+        if ((m = OnceAsk.Match(text)).Success)
+        {
+            int length = m.Groups["n"].Success ? Clamp(int.Parse(m.Groups["n"].Value, CultureInfo.InvariantCulture)) : seconds;
+            if (on || looking) { capri.Say("I'm already watching."); return true; }
+            capri.Say("Watching for " + length + " seconds.");
+            Begin(true, length);
+            return true;
+        }
+        return false;
+    }
+
+    void Begin(bool once, int length)
+    {
+        int mine;
+        lock (gate)
+        {
+            mine = ++ticket;
+            on = !once;
+            said.Clear();
+        }
+        Thread worker = new Thread(delegate() { Run(once, length, mine); }) { IsBackground = true, Name = "Long Look" };
+        worker.Start();
+    }
+
+    bool Sleep(int ms, int mine)
+    {
+        for (int left = ms; left > 0; left -= 100)
+        {
+            if (ticket != mine) return false;
+            Thread.Sleep(Math.Min(100, left));
+        }
+        return ticket == mine;
+    }
+
+    public void Run(bool once, int length, int mine)
+    {
+        int still = 0, failed = 0;
+        DateTime started = DateTime.UtcNow;
+        try
+        {
+            // The first look starts after her "watching" line, so she isn't watching her own bubble.
+            if (!Wait(1500, mine)) return;
+            while (ticket == mine)
+            {
+                looking = true;
+                List<byte[]> frames = Gather(length, mine);
+                looking = false;
+                if (frames == null || ticket != mine) return;
+                if (frames.Count < 2)
+                {
+                    if (once) { capri.Say("I can't see your screen right now."); return; }
+                }
+                else if (!once && Same(frames))
+                {
+                    if (++still >= 6) { Finish(mine, "Nothing's moved for a while, so I stopped watching. Say long look on to start again."); return; }
+                }
+                else
+                {
+                    still = 0;
+                    string line = null;
+                    try { line = Ask(frames, length, once); failed = 0; }
+                    catch (Exception error)
+                    {
+                        Exception real = error is TargetInvocationException && error.InnerException != null ? error.InnerException : error;
+                        capri.Log("Long Look couldn't ask her eyes: " + real.Message);
+                        if (once) { capri.Say("I couldn't look just now. " + Short(real.Message)); return; }
+                        if (++failed >= 3) { Finish(mine, "My eyes keep failing, so I stopped watching. " + Short(real.Message)); return; }
+                    }
+                    if (ticket != mine) return;
+                    if (line != null)
+                    {
+                        for (int i = 0; i < 16 && !Free() && ticket == mine; i++) if (!Wait(500, mine)) return;
+                        if (ticket != mine) return;
+                        lock (gate) { said.Add(line); if (said.Count > 6) said.RemoveAt(0); }
+                        capri.Say(line);
+                    }
+                }
+                if (once) return;
+                if (DateTime.UtcNow - started > TimeSpan.FromHours(3)) { Finish(mine, "That's three hours of watching, so I'm resting my eyes. Say long look on to keep going."); return; }
+                if (!Wait(Rest * (failed > 0 ? 2 : 1), mine)) return;
+            }
+        }
+        catch (Exception error) { capri.Log("Long Look stopped: " + error.Message); }
+        finally { if (ticket == mine) { looking = false; if (once) on = false; } }
+    }
+
+    void Finish(int mine, string line)
+    {
+        lock (gate) { if (ticket != mine) return; ticket++; on = false; looking = false; }
+        capri.Say(line);
+    }
+
+    static string Short(string message)
+    {
+        string m = Regex.Replace(message ?? "", @"\s+", " ").Trim();
+        return m.Length > 120 ? m.Substring(0, 120) : m;
+    }
+
+    // Frames about two seconds apart across the look. A password box in front ends the look with nothing kept.
+    List<byte[]> Gather(int length, int mine)
+    {
+        int count = Math.Max(3, Math.Min(6, length / 2 + 1));
+        int gap = length * 1000 / (count - 1);
+        List<byte[]> frames = new List<byte[]>();
+        for (int i = 0; i < count; i++)
+        {
+            if (ticket != mine) return null;
+            if (Secret()) return new List<byte[]>();
+            byte[] jpeg = null;
+            try { jpeg = shot.Invoke(window, null) as byte[]; } catch (Exception) { }
+            if (jpeg != null && jpeg.Length > 0) frames.Add(jpeg);
+            if (i < count - 1 && !Wait(gap, mine)) return null;
+        }
+        return frames;
+    }
+
+    bool Secret()
+    {
+        try
+        {
+            Func<bool> check = secret == null ? null : secret.GetValue(null) as Func<bool>;
+            return check != null && check();
+        }
+        catch (Exception) { return false; }
+    }
+
+    bool Free()
+    {
+        try { return free == null || (bool)free.Invoke(window, null); }
+        catch (Exception) { return true; }
+    }
+
+    static bool Same(List<byte[]> frames)
+    {
+        for (int i = 1; i < frames.Count; i++)
+        {
+            if (frames[i].Length != frames[0].Length) return false;
+            for (int j = 0; j < frames[i].Length; j++) if (frames[i][j] != frames[0][j]) return false;
+        }
+        return true;
+    }
+
+    public string Instruction(int frames, int length, bool once)
+    {
+        StringBuilder ask = new StringBuilder();
+        ask.Append("These are ").Append(frames).Append(" screenshots of their screen in order, oldest first, spread over the last ").Append(length)
+           .Append(" seconds. You were watching the whole time, so treat them as one stretch of time, not separate pictures: work out what happened from the first to the last, what changed, moved or was said in any subtitles.\n")
+           .Append("Say one or two short sentences out loud to them about what happened across that stretch, like a friend watching next to them. React to the event, the story or the change, in the screen's own words (names, titles, what's written). ")
+           .Append("Never mention screenshots, frames, pictures or images, and don't list what each one shows. No labels, no quotes around your line.");
+        lock (gate)
+            if (said.Count > 0)
+            {
+                ask.Append("\nYou've been watching this with them for a while. Your earlier lines, oldest first:");
+                foreach (string line in said) ask.Append("\n- ").Append(line);
+                ask.Append("\nFollow on from those like you remember what came before, and don't repeat yourself.");
+            }
+        ask.Append(once ? "\nThey asked you to look, so always say something about what you saw." : "\nIf nothing worth a comment happened since your last line, reply with just SKIP.");
+        return ask.ToString();
+    }
+
+    string Ask(List<byte[]> frames, int length, bool once)
+    {
+        string system = "";
+        try { if (persona != null) system = persona.GetValue(null, null) as string ?? ""; } catch (Exception) { }
+        try { if (speechRules != null) system += speechRules.Invoke(null, null) as string ?? ""; } catch (Exception) { }
+        if (system.Length == 0) system = "You are Capri, a playful desktop companion.";
+        string raw = (string)quick.Invoke(brain, new object[] { system, Instruction(frames.Count, length, once), 140, frames.ToArray() });
+        return Tidy(raw);
+    }
+
+    public static string Tidy(string raw)
+    {
+        string line = Regex.Replace(raw ?? "", @"\s+", " ").Trim().Trim('"', '“', '”').Trim();
+        line = Regex.Replace(line, @"^(?:capri\s*:\s*)", "", RegexOptions.IgnoreCase);
+        if (line.Length == 0 || Regex.IsMatch(line, @"^\W*SKIP\b", RegexOptions.IgnoreCase) || Regex.IsMatch(line, @"\bSKIP\W*$")) return null;
+        return line.Length > 400 ? line.Substring(0, 400) : line;
+    }
+
+    // ---------------- the sign that she's watching ----------------
+
+    float Scale()
+    {
+        try
+        {
+            float s = talkScale == null ? 1 : (float)talkScale.Invoke(window, null);
+            return s >= 0.5f && s <= 8 ? s : 1;
+        }
+        catch (Exception) { return 1; }
+    }
+
+    public static Size Measure(float s) { return new Size((int)Math.Round(86 * s), (int)Math.Round(20 * s)); }
+
+    public void Draw()
+    {
+        if (chip == null || chip.IsDisposed) return;
+        bool show = (on || looking) && window != null && window.Visible;
+        if (!show) { if (chip.Visible) chip.Hide(); drawnKey = null; return; }
+        float s = Scale();
+        Size size = Measure(s);
+        Rectangle area = Screen.FromControl(window).WorkingArea;
+        Point at = new Point(window.Left + (window.Width - size.Width) / 2, window.Top - size.Height - (int)(4 * s));
+        at = new Point(Math.Max(area.Left, Math.Min(area.Right - size.Width, at.X)), Math.Max(area.Top, Math.Min(area.Bottom - size.Height, at.Y)));
+        bool lit = looking && Environment.TickCount / 500 % 2 == 0;
+        string key = looking + "|" + lit + "|" + s + "|" + at;
+        if (chip.Visible && key == drawnKey) return;
+        drawnKey = key;
+        present.Invoke(chip, new object[] { Render(s, looking, lit), at });
+    }
+
+    public Bitmap Render(float s, bool watching, bool lit)
+    {
+        Size size = Measure(s);
+        Bitmap image = new Bitmap(size.Width, size.Height, PixelFormat.Format32bppPArgb);
+        using (Graphics g = Graphics.FromImage(image))
+        {
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.PixelOffsetMode = PixelOffsetMode.HighQuality;
+            g.TextRenderingHint = TextRenderingHint.AntiAliasGridFit;
+            int margin = (int)Math.Round(2 * s);
+            Rectangle body = new Rectangle(margin, margin, size.Width - margin * 2, size.Height - margin * 2);
+            Color edge = watching ? red : cyan;
+            if (plate != null) plate.Invoke(null, new object[] { g, body, s, Rectangle.Empty, edge, watching ? pink : cyan });
+            else using (Brush b = new SolidBrush(Color.FromArgb(240, 9, 11, 15))) g.FillRectangle(b, body);
+            float r = 2.6f * s, cx = body.Left + 9 * s, cy = size.Height / 2f;
+            using (Brush b = new SolidBrush(watching ? (lit ? red : Color.FromArgb(120, red)) : Color.FromArgb(90, 104, 128))) g.FillEllipse(b, cx - r, cy - r, r * 2, r * 2);
+            string label = watching ? "WATCHING" : "LONG LOOK";
+            Font font = null;
+            try { if (mono != null) font = (Font)mono.Invoke(null, new object[] { 7.6f * s, FontStyle.Regular, GraphicsUnit.Pixel, label }); } catch (Exception) { }
+            if (font == null) font = new Font("Consolas", 7.6f * s, FontStyle.Regular, GraphicsUnit.Pixel);
+            using (font)
+            using (Brush b = new SolidBrush(watching ? Color.FromArgb(240, 240, 244) : Color.FromArgb(170, 180, 196)))
+            {
+                SizeF text = g.MeasureString(label, font, PointF.Empty, StringFormat.GenericTypographic);
+                g.DrawString(label, font, b, cx + 7 * s, cy - text.Height / 2, StringFormat.GenericTypographic);
+            }
+        }
+        return image;
+    }
+
+    static Color Colour(Type look, string name, Color fallback)
+    {
+        if (look == null) return fallback;
+        FieldInfo f = look.GetField(name, Any);
+        if (f != null && f.FieldType == typeof(Color)) return (Color)f.GetValue(null);
+        PropertyInfo p = look.GetProperty(name, Any);
+        return p != null && p.PropertyType == typeof(Color) ? (Color)p.GetValue(null, null) : fallback;
+    }
+
+    static T Need<T>(T found, string name) where T : class
+    {
+        if (found == null) throw new MissingMemberException(name + " is missing from this Capri version");
+        return found;
+    }
+
+    void OnUi(Action work)
+    {
+        Action safe = delegate
+        {
+            try { work(); }
+            catch (Exception error) { capri.Log("Long Look: " + error.Message); }
+        };
+        try { if (window != null && window.IsHandleCreated && !window.IsDisposed && window.InvokeRequired) window.BeginInvoke(safe); else safe(); }
+        catch (InvalidOperationException) { safe(); }
+    }
+}
