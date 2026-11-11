@@ -1,0 +1,74 @@
+// capri-mod: 1
+// id: dice-roll-rus
+// name: кубы и монетка
+// version: 1.1.0
+// author: kyltest12
+// description: Бросаем d4, d6, d10, d12 и подбрасываем монетку.
+
+using System;
+using System.Text.RegularExpressions;
+using CapriDesktop;
+
+public class DiceRoll : ICapriMod
+{
+    private ICapriHost capri;
+    private Random rnd;
+    private static readonly int[] Allowed = new int[] { 4, 6, 10, 12 };
+
+    public void Start(ICapriHost host)
+    {
+        capri = host;
+        rnd = new Random();
+        capri.Log("Started.");
+    }
+
+    public bool Heard(string words)
+    {
+        string line = words.ToLowerInvariant();
+
+        bool throwWord = line.Contains("брос") || line.Contains("кин")
+            || line.Contains("кида") || line.Contains("подкин");
+        if (!throwWord)
+            return false;
+
+        if (line.Contains("монет"))
+        {
+            bool heads = rnd.Next(2) == 0;
+            capri.Say(heads ? "Орёл!" : "Решка!");
+            capri.Sound("click");
+            return true;
+        }
+
+        int sides = 0;
+        Match m = Regex.Match(line, @"\b[dд]\s*(\d+)\b");
+        if (m.Success)
+        {
+            if (!int.TryParse(m.Groups[1].Value, out sides))
+                sides = 0;
+        }
+        else if (line.Contains("куб"))
+        {
+            sides = 6;
+        }
+        else
+        {
+            return false;
+        }
+
+        if (Array.IndexOf(Allowed, sides) < 0)
+        {
+            capri.Say("Такого кубика у меня нет. Есть d4, d6, d10 и d12.");
+            return true;
+        }
+
+        int n = rnd.Next(1, sides + 1);
+        capri.Say("d" + sides + ": выпало " + n + "!");
+        capri.Sound("hop");
+        return true;
+    }
+
+    public void Stop()
+    {
+        capri.Log("Stopped.");
+    }
+}
