@@ -1,0 +1,163 @@
+// capri-mod: 1
+// id: battery-drama
+// name: Low Battery Drama
+// version: 1.0.0
+// author: Issei
+// description: On a laptop she gets more dramatic as the battery runs down, from a worried look at 30% to lying down at 5%, and cheers when you plug in.
+// permissions: system, chat
+// requires: api 3
+
+using System;
+using System.Collections.Generic;
+using System.Drawing;
+using System.Text.RegularExpressions;
+using System.Windows.Forms;
+using CapriDesktop;
+
+// Each step happens once per drain: at 30, 20, 10, 5 and 2 percent. If the battery drops past several at once, only the
+// lowest speaks. Plugging in starts the steps over, and the cheer is bigger the closer it got. Full while charging, she
+// says so once per charge. On a PC without a battery it does nothing, and says so if asked.
+public class BatteryDrama : ICapriMod
+{
+    // The harness fills this in to test without dice.
+    public Func<int, int> Pick;
+
+    private const RegexOptions Plain = RegexOptions.IgnoreCase | RegexOptions.CultureInvariant;
+    private static readonly Regex Wake = new Regex(@"^\s*(?:(?:hey|hi|ok|okay|yo|oi)[\s,]+)?capri\b[\s,.:;!?-]*|[\s,]+capri[\s.!?]*$", Plain);
+    private static readonly Regex Ask = new Regex(@"^(?:battery|(?:what'?s|what\s+is)\s+(?:the\s+|my\s+)?battery(?:\s+(?:at|level|percentage))?|how(?:'?s|\s+is)\s+(?:the\s+|my\s+)?battery(?:\s+(?:doing|going|looking))?|how\s+much\s+battery(?:\s+(?:do\s+i\s+have|is\s+left|left))?|battery\s+(?:level|status|check|percentage)|am\s+i\s+charging|is\s+it\s+charging)$", Plain);
+
+    private static readonly int[] Steps = { 30, 20, 10, 5, 2 };
+    private static readonly string[][] Lines =
+    {
+        new[] { "Battery's at {0}. Just saying.", "{0} percent. Might want the charger nearby.", "Heads up, {0} percent battery." },
+        new[] { "{0} percent. I'm starting to feel it.", "Down to {0}. I don't love this.", "{0} percent. Where's the charger? Asking for me." },
+        new[] { "{0} percent. Charger. Now. Please.", "Ten-ish percent. My pixels are getting cold.", "{0} percent! This is not a drill." },
+        new[] { "{0} percent... tell the others I was cool.", "{0} percent. I'm just going to lie down here. Forever, probably.", "This is how it ends. {0} percent." },
+        new[] { "{0} percent. This is it.", "{0}... percent... remember me...", "Goodbye, cruel world. {0} percent." },
+    };
+    private static readonly string[] Saved = { "Power! I'm saved.", "Plugged in. Crisis over.", "Ahh. Electricity. Thank you." };
+    private static readonly string[] Close = { "That was way too close. Thank you!", "You plugged me in at {0}?! My heart. Thank you.", "{0} percent and you saved me. Hero." };
+
+    private ICapriHost capri;
+    private readonly Random random = new Random();
+    private readonly bool[] on = { true, true, true, true, true };
+    private bool lieDown = true;
+
+    private readonly HashSet<int> fired = new HashSet<int>();
+    private int lowest = 101;          // the lowest it got this drain
+    private bool charging, fullSaid, lying;
+    private int last = -1;
+    private readonly int[] lastLine = { -1, -1, -1, -1, -1, -1, -1 };
+
+    public void Start(ICapriHost host)
+    {
+        capri = host;
+        if (Pick == null) Pick = delegate(int n) { return random.Next(n); };
+        for (int i = 0; i < Steps.Length; i++) on[i] = capri.Store.Flag("step " + Steps[i], true);
+        lieDown = capri.Store.Flag("lie down", true);
+        last = capri.System.Battery;
+        charging = capri.System.Charging;
+        // starting low doesn't replay the steps already behind it: only new drops speak
+        if (last >= 0 && !charging) foreach (int s in Steps) if (last <= s) fired.Add(s);
+        if (last >= 0) lowest = last;
+        capri.System.BatteryChanged += Changed;
+        capri.Chat.AddContext(delegate
+        {
+            int b = capri.System.Battery;
+            if (b < 0) return null;
+            return "Laptop battery: " + b + "%, " + (capri.System.Charging ? "charging" : "not charging") + ".";
+        });
+        capri.Ui.SetOptions("Low Battery Drama", MakeOptions);
+    }
+
+    public void Stop() { }
+
+    public bool Heard(string words)
+    {
+        string said = Wake.Replace(words ?? "", "").Trim().TrimEnd('.', '!', '?').Trim();
+        if (!Ask.IsMatch(said)) return false;
+        int b = capri.System.Battery;
+        if (b < 0) { Say("No battery here. I run on the wall."); return true; }
+        bool c = capri.System.Charging;
+        if (c) Say(b >= 100 ? "Full, and still plugged in." : b + " percent and charging.");
+        else if (b <= 10) Say(b + " percent and not charging. Please plug me in.");
+        else if (b <= 30) Say(b + " percent, not charging. Charger soon.");
+        else Say(b + " percent. We're fine.");
+        return true;
+    }
+
+    private void Changed(int percent, bool plugged)
+    {
+        if (percent < 0) return;
+        bool wasCharging = charging;
+        charging = plugged;
+        last = percent;
+        if (plugged)
+        {
+            if (!wasCharging)
+            {
+                // the cheer: only when it had got low enough to matter
+                if (lowest <= 30 || fired.Count > 0) Cheer(lowest);
+                fired.Clear();
+                fullSaid = false;
+            }
+            lowest = percent;
+            if (percent >= 100 && !fullSaid) { fullSaid = true; Say("Fully charged. You can unplug me now."); }
+            return;
+        }
+        if (wasCharging) { fullSaid = false; lowest = percent; }
+        lowest = Math.Min(lowest, percent);
+        // the lowest step it has just passed, if that one hasn't happened this drain
+        int step = -1;
+        for (int i = 0; i < Steps.Length; i++) if (percent <= Steps[i] && on[i] && !fired.Contains(Steps[i])) step = i;
+        if (step < 0) return;
+        for (int i = 0; i <= step; i++) fired.Add(Steps[i]);
+        Say(string.Format(Line(step), percent));
+        switch (Steps[step])
+        {
+            case 10: capri.Her.Animate("glitch"); break;
+            case 5:
+                if (lieDown) { capri.Her.Move("lie_down"); lying = true; }
+                else capri.Her.Animate("glitch");
+                break;
+            case 2: capri.Her.Animate("glitch"); break;
+        }
+    }
+
+    private void Cheer(int low)
+    {
+        if (lying) { capri.Her.Move("stand_up"); lying = false; }
+        if (low <= 10) Say(string.Format(Close[Pick(Close.Length)], low));
+        else Say(Saved[Pick(Saved.Length)]);
+        capri.Her.Animate("dance");
+        capri.Timers.After(low <= 10 ? 5 : 3, delegate { capri.Her.Animate("stop_dancing"); });
+    }
+
+    private string Line(int step)
+    {
+        string[] lines = Lines[step];
+        int pick = Pick(lines.Length);
+        if (pick == lastLine[step] && lines.Length > 1) pick = (pick + 1) % lines.Length;
+        lastLine[step] = pick;
+        return lines[pick];
+    }
+
+    private Control MakeOptions()
+    {
+        FlowLayoutPanel page = new FlowLayoutPanel { FlowDirection = FlowDirection.TopDown, AutoSize = true, Padding = new Padding(8) };
+        page.Controls.Add(new Label { Text = "She reacts at:", AutoSize = true });
+        for (int i = 0; i < Steps.Length; i++)
+        {
+            int index = i;
+            CheckBox box = new CheckBox { Text = Steps[i] + "%", Checked = on[i], AutoSize = true };
+            box.CheckedChanged += delegate { on[index] = box.Checked; capri.Store.Set("step " + Steps[index], box.Checked); };
+            page.Controls.Add(box);
+        }
+        CheckBox lie = new CheckBox { Text = "Lie down at 5%", Checked = lieDown, AutoSize = true };
+        lie.CheckedChanged += delegate { lieDown = lie.Checked; capri.Store.Set("lie down", lie.Checked); };
+        page.Controls.Add(lie);
+        return page;
+    }
+
+    private void Say(string line) { capri.Say(line); }
+}

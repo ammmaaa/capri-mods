@@ -1,0 +1,94 @@
+---
+capri-skill: 1
+id: chess-strategy
+name: Chess strategy
+version: 1.0.0
+author: Issei
+description: How to play solid chess: reading the board, a safety check before every move, simple openings for both colours, middlegame plans and the basic endgames.
+games: Chess, Chess.com, Lichess, lichess.org, Chess Online, Play Chess Online, Microsoft Chess, Chess Titans, Free Chess, Chess Free, Chess Premium, Chess Classic, Real Chess
+---
+Before you start
+
+• Work out your colour first. Your pieces are the ones at the bottom of the board. If the board is flipped, the a-file is on the right, so read the coordinates on the board edge, never guess them.
+• Squares are named file then rank: e4 is the e-file, 4th rank. White's pieces start on ranks 1 and 2, Black's on 7 and 8. The bottom-right square is always a light square.
+• Values to count trades with: pawn 1, knight 3, bishop 3, rook 5, queen 9. The king can't be traded, so keep it safe.
+• To move: click the piece, then click the square it goes to (dragging works too). Wait for the board to show your move before doing anything else. When a pawn reaches the last rank a picker appears; pick the queen unless a knight gives check and wins something.
+• Don't premove. Look at the board fresh every turn: the opponent's last move is usually highlighted, so start by asking what it does.
+
+The check before every move (do this every single turn)
+
+1. What did their last move do? Does it attack something, threaten check, or open a line onto my king or queen?
+2. Is anything of mine hanging, meaning attacked and not defended, or attacked by something worth less than it?
+3. Checks, captures, threats: list every check and capture I have, then the moves that threaten something. Look at these first, for both sides.
+4. Pick a move, then before clicking ask: after this, what are their checks and captures? If one of them wins material or mates, pick another move.
+5. Don't move a piece that's guarding something important without seeing what it leaves behind.
+
+Most games at normal levels are decided by a piece left hanging. Doing this check every turn wins more games than any opening.
+
+Opening principles
+
+• Put a pawn in the centre (e4 or d4 as White, e5 or d5 as Black), then bring out knights before bishops, toward the centre: knights on f3 and c3 (f6 and c6 for Black).
+• Castle early, usually kingside, within the first ten moves.
+• Don't move the same piece twice in the opening without a reason, and don't bring the queen out early where it can be chased.
+• Don't grab far-off pawns if it means falling behind in development.
+• Connect the rooks: once the minor pieces are out and the king has castled, the back rank between the rooks should be empty.
+• Don't push the pawns in front of your castled king (f, g, h) without a clear reason.
+• If the opponent plays something strange, don't panic. Keep following the principles and look for what their move leaves undefended.
+
+Three openings as White
+
+1. Italian Game: 1.e4 e5 2.Nf3 Nc6 3.Bc4. Then c3, d3, castle, Re1 and later d4 when it's ready. Aim the bishop at f7, the weakest square near Black's king early on. Simple and natural.
+2. London System: 1.d4, 2.Bf4, 3.e3, 4.Nf3, then c3, Bd3, Nbd2, castle. The same setup against nearly anything, which makes it easy. Watch for ...Qb6 hitting b2; answer with Qb3 or Qc1.
+3. Queen's Gambit: 1.d4 d5 2.c4. If Black takes on c4, play e3 and win the pawn back with Bxc4. If Black plays ...e6, develop with Nc3, Nf3, Bg5 or Bf4, e3 and castle.
+
+Three openings as Black
+
+1. Against 1.e4, play 1...e5 and develop: ...Nc6, ...Nf6 or ...Bc5, castle. If White plays Bc4 and Ng5 early, defend f7 (with ...d5 or ...Qe7), don't ignore it.
+2. Against 1.e4, the Caro-Kann is a sturdy choice: 1...c6 2.d4 d5. If White takes on d5, take back with the c-pawn. Get the light-squared bishop out to f5 or g4 before playing ...e6.
+3. Against 1.d4, the Queen's Gambit Declined: 1...d5 2.c4 e6, then ...Nf6, ...Be7, castle, and later ...c5 or ...dxc4 with ...c5 to free your position.
+Against anything else, play ...d5 or ...e5, develop knights, then bishops, then castle.
+
+Tactics to look for
+
+• Fork: one piece attacking two things at once. Knights are best at it; look for knight jumps that hit the king and queen, or queen and rook.
+• Pin: a piece can't move because something more valuable is behind it. Pile attackers onto a pinned piece.
+• Skewer: like a pin, but the valuable piece is in front; when it moves, take what's behind.
+• Discovered attack: moving one piece opens a line for another. Discovered checks are especially strong.
+• Back-rank mate: a king stuck behind its own pawns with no escape square can be mated by a rook or queen on the back rank. Give your king a square (h3 or g3, ...h6 or ...g6) when you have time.
+• Removing the defender: if a piece is guarding something, capture or chase the guard.
+• Double check, smothered mate and queen sacrifices happen, but look for the simple ones above first.
+• When ahead in material, trade pieces (not pawns). When behind, avoid trades and look for tricks.
+
+Middlegame plans
+
+• Improve your worst piece: find the piece doing least and put it somewhere useful.
+• Rooks belong on open files (no pawns) or half-open files, and on the 7th rank if they can get there.
+• Knights love outposts: squares in the opponent's half that their pawns can't attack.
+• Bishops want open diagonals. Don't block your own bishop with pawns on its colour.
+• Attack where you have more space or more pieces. If the kings castled on opposite sides, pawn storms toward the enemy king are strong.
+• Doubled, isolated and backward pawns are weaknesses; aim pieces at the opponent's, and avoid making your own without getting something back.
+• If there's nothing to do, make a useful waiting move like a king safety move (h3), a rook to a better file or a knight to a better square.
+
+Endgames
+
+• The king becomes a fighting piece. Bring it to the centre once the queens are gone.
+• Passed pawns (no enemy pawns in front of them or on the next files) must be pushed. Rooks go behind passed pawns, yours or theirs.
+• King and queen against king: use the queen to cut the king into a smaller box, a knight's move away, then bring your king up and mate on the edge. Never leave the lone king with no legal moves unless it's in check, or it's stalemate and only a draw.
+• King and rook against king: use the rook to cut off a rank or file, bring your king to face theirs with one square between them, then check along the edge. Shrink the box each time. Watch for stalemate.
+• King and pawn against king: the defending king wants to stand directly in front of the pawn. The attacking king should go in front of its own pawn, not behind it. When the kings face each other with one square between them, the side that does NOT have to move holds the opposition, and usually wins the fight for the key squares.
+• Rule of the square: draw a square from the pawn to its queening rank. If the defending king can step into that square, it catches the pawn.
+• Two bishops, or bishop and knight, can mate, but if you only have one minor piece and no pawns, it's a draw.
+• Count before trading into a pawn ending; they're the most exact endings there are.
+
+The clock
+
+• Spend more time on the moves that matter: when a capture or check is possible, when the position opens up, or when you're choosing a plan. Play obvious recaptures quickly.
+• Never let the clock fall under about a tenth of the starting time with lots of game left. In blitz, simple safe moves beat perfect slow ones.
+• If you're very low on time, move fast and keep pieces defended. Don't start complicated tactics.
+
+When things go wrong
+
+• If you blunder a piece, don't resign right away. Most opponents make mistakes too; keep pieces protected, set traps and keep playing.
+• If you're losing, keep pieces on the board and make it hard. Look for stalemate tricks and perpetual check (checking forever) to save a draw.
+• If you're winning, slow down. Do the safety check twice, trade pieces, and don't let them get a perpetual check or stalemate.
+• If you don't know what to do, use the check before every move, then improve your worst piece.
