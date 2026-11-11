@@ -530,6 +530,14 @@
       "about": "Give Capri new names just by asking, out loud or in chat. She answers to them straight away and remembers them."
     },
     {
+      "folder": "nova-angel",
+      "file": "nova-angel.capri-skin",
+      "name": "Nova - Angel",
+      "kind": "skin",
+      "author": "Chilled (chillteas on discord)",
+      "about": "A skin for Capri: an angel with soft wings and a halo, in whatever colour you like. AI generated, moves just as Capri does."
+    },
+    {
       "folder": "prism-overdrive",
       "file": "prism-overdrive.capri-skin",
       "name": "Prism Overdrive",
